@@ -9,11 +9,7 @@ const SHEETS_WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbwVV0tNZHPUCipahgdb22nOnhte9-znpYphU8EaPM1yEUkvKyOfxb4Go-bc_ekgHOlr/exec";
 
 const VISITOR_KEY = "continuumFlowVisitorId";
-const LEAD_KEY = "continuumFlowLead";
 
-/* -----------------------------
-   VISITOR ID
------------------------------- */
 const getVisitorId = () => {
   let visitorId = localStorage.getItem(VISITOR_KEY);
 
@@ -25,46 +21,8 @@ const getVisitorId = () => {
   return visitorId;
 };
 
-/* -----------------------------
-   LEAD STORAGE
------------------------------- */
-const getStoredLead = () => {
-  try {
-    return JSON.parse(localStorage.getItem(LEAD_KEY) || "{}");
-  } catch {
-    return {};
-  }
-};
-
-const getFormLead = () => {
-  if (!form) return {};
-
-  const data = new FormData(form);
-
-  return {
-    name: String(data.get("name") || "").trim(),
-    email: String(data.get("email") || "").trim(),
-    company: String(data.get("company") || "").trim(),
-  };
-};
-
-const getKnownLead = () => {
-  const current = getFormLead();
-  const stored = getStoredLead();
-
-  return {
-    name: current.name || stored.name || "",
-    email: current.email || stored.email || "",
-    company: current.company || stored.company || "",
-  };
-};
-
-/* -----------------------------
-   BASE PAYLOAD
------------------------------- */
-const basePayload = (tipo) => ({
-  data: new Date().toISOString(),
-  tipo,
+const basePayload = () => ({
+  tipo: "form_submit",
   page_url: window.location.href,
   referer: document.referrer || "",
   visitor_id: getVisitorId(),
@@ -73,24 +31,22 @@ const basePayload = (tipo) => ({
   screen: `${window.innerWidth}x${window.innerHeight}`,
 });
 
-/* -----------------------------
-   SEND TO SHEET (FIXED)
------------------------------- */
 const sendToSheet = async (payload) => {
   try {
     await fetch(SHEETS_WEB_APP_URL, {
       method: "POST",
       mode: "no-cors",
-      body: JSON.stringify(payload)
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
     });
   } catch (err) {
     console.warn("Sheet error:", err);
   }
 };
 
-/* -----------------------------
-   MENU TOGGLE
------------------------------- */
 if (menuToggle && nav) {
   menuToggle.addEventListener("click", () => {
     nav.classList.toggle("open");
@@ -105,9 +61,6 @@ if (menuToggle && nav) {
   });
 }
 
-/* -----------------------------
-   SMOOTH SCROLL
------------------------------- */
 document.querySelectorAll('a[href^="#"]').forEach((link) => {
   link.addEventListener("click", (event) => {
     const targetId = link.getAttribute("href");
@@ -123,79 +76,64 @@ document.querySelectorAll('a[href^="#"]').forEach((link) => {
   });
 });
 
-/* -----------------------------
-   BUTTON TRACKING
------------------------------- */
-document.addEventListener("click", (event) => {
-  const clicked = event.target.closest("a.btn, button.btn");
-  if (!clicked) return;
+const sections = ["services", "process", "about", "results", "clients"]
+  .map((id) => document.getElementById(id))
+  .filter(Boolean);
 
-  const lead = getKnownLead();
-  const label = clicked.textContent.replace(/\s+/g, " ").trim();
+const navLinks = [...document.querySelectorAll(".main-nav a")];
 
-  sendToSheet({
-    ...basePayload("button_click"),
-    ...lead,
-    button_text: label,
-    button_href: clicked.href || ""
-  });
-});
+if ("IntersectionObserver" in window && sections.length) {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
 
-/* -----------------------------
-   FORM SUBMIT
------------------------------- */
+      if (!visible) return;
+
+      navLinks.forEach((link) => {
+        link.classList.toggle("active", link.getAttribute("href") === `#${visible.target.id}`);
+      });
+    },
+    {
+      rootMargin: "-35% 0px -55% 0px",
+      threshold: [0.1, 0.3, 0.6],
+    }
+  );
+
+  sections.forEach((section) => observer.observe(section));
+}
+
 if (form && formStatus) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const data = new FormData(form);
-
-    const lead = {
+    const payload = {
+      ...basePayload(),
       name: String(data.get("name") || "").trim(),
       email: String(data.get("email") || "").trim(),
+      phone: String(data.get("phone") || "").trim(),
       company: String(data.get("company") || "").trim(),
+      message: String(data.get("message") || "").trim(),
+      button_text: "",
+      button_href: "",
     };
-
-    const message = String(data.get("message") || "").trim();
-
-    localStorage.setItem(LEAD_KEY, JSON.stringify(lead));
 
     formStatus.textContent = "A enviar...";
 
-    await sendToSheet({
-      ...basePayload("form_submit"),
-      ...lead,
-      message,
-      button_text: "form_submit",
-      button_href: "#contact"
-    });
+    await sendToSheet(payload);
 
-    formStatus.textContent =
-      "Obrigado! O teu pedido foi registado.";
-
+    formStatus.textContent = "Obrigado! O teu pedido foi registado.";
     form.reset();
   });
 }
 
-/* -----------------------------
-   CALENDAR BUTTON
------------------------------- */
 if (calendarButton && formStatus) {
   calendarButton.addEventListener("click", () => {
-    sendToSheet({
-      ...basePayload("calendar_click"),
-      button_text: "calendar",
-      button_href: "calendar"
-    });
-
-    formStatus.textContent =
-      "Calendário clicado.";
+    formStatus.textContent = "Calendário clicado.";
   });
 }
-
-/* ==============================
-   MODAIS DOS SERVIÇOS
-============================== */
 
 const modalOverlay = document.querySelector("[data-modal-overlay]");
 const modalCloseButtons = document.querySelectorAll("[data-modal-close]");
@@ -223,15 +161,6 @@ function openModal(modalName) {
 
   modal.classList.add("open");
   document.body.style.overflow = "hidden";
-
-  // tracking opcional
-  if (typeof sendToSheet === "function") {
-    sendToSheet({
-      ...basePayload("modal_open"),
-      botao: modalName,
-      destino: "service_modal",
-    });
-  }
 }
 
 serviceCards.forEach((card) => {
