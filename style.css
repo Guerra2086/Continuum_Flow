@@ -320,7 +320,7 @@ h2 span,
   box-shadow: var(--shadow);
   text-align: left;
   transform: translateX(-50%);
-  margin-top: 5%;
+  margin-top: 10%;
 }
 
 .stat strong {
